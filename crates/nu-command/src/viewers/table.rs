@@ -148,27 +148,17 @@ impl Command for Table {
             ),
             PipelineData::Value(Value::Record { cols, vals, .. }, ..) => {
                 let mut output = vec![];
-
                 for (c, v) in cols.into_iter().zip(vals.into_iter()) {
-                    output.push(vec![
-                        StyledString {
-                            contents: c,
-                            style: TextStyle::default_field(),
-                        },
-                        StyledString {
-                            contents: v.into_abbreviated_string(config),
-                            style: TextStyle::default(),
-                        },
-                    ])
+                    output.push(vec![c, v.into_abbreviated_string(config)])
                 }
 
-                let table = nu_table::Table {
-                    headers: vec![],
-                    data: output,
-                    theme: load_theme_from_config(config),
-                };
+                let table = load_theme_from_config(
+                    nu_table::tabled::builder::Builder::from(output).build(),
+                    config,
+                )
+                .with(nu_table::tabled::MaxWidth::truncating(term_width));
 
-                let result = nu_table::draw_table(&table, term_width, &color_hm, config);
+                let result = table.to_string();
 
                 Ok(Value::String {
                     val: result,
@@ -347,7 +337,7 @@ fn convert_to_table(
     ctrlc: Option<Arc<AtomicBool>>,
     config: &Config,
     head: Span,
-) -> Result<Option<nu_table::Table>, ShellError> {
+) -> Result<Option<nu_table::tabled::Table>, ShellError> {
     let mut headers = get_columns(input);
     let mut input = input.iter().peekable();
     let color_hm = get_color_config(config);
@@ -408,56 +398,65 @@ fn convert_to_table(
             data.push(row);
         }
 
-        Ok(Some(nu_table::Table {
-            headers: headers
-                .into_iter()
-                .map(|x| StyledString {
-                    contents: x,
-                    style: TextStyle {
-                        alignment: nu_table::Alignment::Center,
-                        color_style: Some(color_hm["header"]),
-                    },
-                })
-                .collect(),
-            data: data
-                .into_iter()
-                .map(|x| {
-                    x.into_iter()
-                        .enumerate()
-                        .map(|(col, y)| {
-                            if col == 0 && !disable_index {
-                                StyledString {
-                                    contents: y.1,
-                                    style: TextStyle {
-                                        alignment: nu_table::Alignment::Right,
-                                        color_style: Some(color_hm["row_index"]),
-                                    },
-                                }
-                            } else if &y.0 == "float" {
-                                // set dynamic precision from config
-                                let precise_number =
-                                    match convert_with_precision(&y.1, float_precision) {
-                                        Ok(num) => num,
-                                        Err(e) => e.to_string(),
-                                    };
-                                StyledString {
-                                    contents: precise_number,
-                                    style: style_primitive(&y.0, &color_hm),
-                                }
-                            } else {
-                                StyledString {
-                                    contents: y.1,
-                                    style: style_primitive(&y.0, &color_hm),
-                                }
-                            }
-                        })
-                        .collect::<Vec<StyledString>>()
-                })
-                .collect(),
-            theme: load_theme_from_config(config),
-        }))
+        let data = data
+            .into_iter()
+            .map(|x| {
+                x.into_iter()
+                    .enumerate()
+                    .map(|(col, y)| {
+                        if col == 0 && !disable_index {
+                            color_hm["row_index"].paint(y.1).to_string()
+                        } else if &y.0 == "float" {
+                            // set dynamic precision from config
+                            let precise_number = match convert_with_precision(&y.1, float_precision)
+                            {
+                                Ok(num) => num,
+                                Err(e) => e.to_string(),
+                            };
+
+                            use_primitive_style(precise_number, &y.0, &color_hm)
+                        } else {
+                            use_primitive_style(y.1, &y.0, &color_hm)
+                        }
+                    })
+                    .collect::<Vec<String>>()
+            })
+            .collect::<Vec<_>>();
+
+        let headers = headers
+            .into_iter()
+            .map(|s| color_hm["header"].paint(s).to_string())
+            .collect::<Vec<_>>();
+        let mut table = nu_table::tabled::builder::Builder::from(data)
+            .set_columns(headers)
+            .build()
+            .with(
+                nu_table::tabled::Modify::new(nu_table::tabled::object::Rows::new(1..))
+                    .with(nu_table::tabled::Alignment::left()),
+            );
+
+        if !disable_index {
+            table = table.with(
+                nu_table::tabled::Modify::new(nu_table::tabled::object::Columns::first())
+                    .with(nu_table::tabled::Alignment::right()),
+            );
+        }
+
+        Ok(Some(table))
     } else {
         Ok(None)
+    }
+}
+
+fn use_primitive_style(
+    text: String,
+    primitive: &str,
+    color_hm: &std::collections::HashMap<String, nu_ansi_term::Style>,
+) -> String {
+    let style = style_primitive(primitive, color_hm);
+    match style.color_style {
+        Some(s) => s.paint(text).to_string(),
+        None => text,
     }
 }
 
@@ -536,7 +535,9 @@ impl Iterator for PagingTableCreator {
 
         match table {
             Ok(Some(table)) => {
-                let result = nu_table::draw_table(&table, term_width, &color_hm, &self.config);
+                let t = table.with(nu_table::tabled::MaxWidth::wrapping(term_width));
+                let result = load_theme_from_config(t, &self.config)
+                    .to_string();
 
                 Some(Ok(result.as_bytes().to_vec()))
             }
@@ -546,17 +547,20 @@ impl Iterator for PagingTableCreator {
     }
 }
 
-fn load_theme_from_config(config: &Config) -> TableTheme {
+fn load_theme_from_config(
+    table: nu_table::tabled::Table,
+    config: &Config,
+) -> nu_table::tabled::Table {
     match config.table_mode.as_str() {
-        "basic" => nu_table::TableTheme::basic(),
-        "compact" => nu_table::TableTheme::compact(),
-        "compact_double" => nu_table::TableTheme::compact_double(),
-        "light" => nu_table::TableTheme::light(),
-        "with_love" => nu_table::TableTheme::with_love(),
-        "rounded" => nu_table::TableTheme::rounded(),
-        "reinforced" => nu_table::TableTheme::reinforced(),
-        "heavy" => nu_table::TableTheme::heavy(),
-        "none" => nu_table::TableTheme::none(),
-        _ => nu_table::TableTheme::rounded(),
+        "basic" => table.with(nu_table::tabled::Style::ascii()),
+        "compact" => table.with(nu_table::tabled::Style::modern()),
+        "compact_double" => table.with(nu_table::tabled::Style::extended()),
+        "light" => table.with(nu_table::tabled::Style::psql()),
+        "with_love" => table.with(nu_table::tabled::Style::blank().left(' ').top(' ').bottom(' ').top_left_corner('❤').bottom_left_corner('❤')),
+        "rounded" => table.with(nu_table::tabled::Style::rounded()),
+        "reinforced" => table.with(nu_table::tabled::Style::re_structured_text()),
+        "heavy" => table.with(nu_table::tabled::Style::github_markdown()),
+        "none" => table.with(nu_table::tabled::Style::blank()),
+        _ => table.with(nu_table::tabled::Style::rounded()),
     }
 }
