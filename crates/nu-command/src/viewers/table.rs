@@ -556,6 +556,9 @@ fn build_table(
 
     if need_footer(config, count_records as u64) {
         table = table.with(FooterStyle);
+        table = table.with(
+            tabled::Modify::new(tabled::object::Rows::last()).with(tabled::Alignment::center()),
+        );
     }
 
     table
