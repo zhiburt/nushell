@@ -4,10 +4,17 @@ use nu_engine::{column::get_columns, env_to_string, CallExt};
 use nu_protocol::{
     ast::{Call, PathMember},
     engine::{Command, EngineState, Stack, StateWorkingSet},
-    format_error, Category, Config, DataSource, Example, IntoPipelineData, ListStream,
+    format_error, Category, Config, DataSource, Example, FooterMode, IntoPipelineData, ListStream,
     PipelineData, PipelineMetadata, RawStream, ShellError, Signature, Span, SyntaxShape, Value,
 };
-use nu_table::{StyledString, TableTheme, TextStyle};
+use nu_table::{
+    tabled::{
+        self,
+        style::{CustomStyle, Symbol},
+        Highlight,
+    },
+    StyledString, TableTheme, TextStyle,
+};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
@@ -152,11 +159,7 @@ impl Command for Table {
                     output.push(vec![c, v.into_abbreviated_string(config)])
                 }
 
-                let table = load_theme_from_config(
-                    nu_table::tabled::builder::Builder::from(output).build(),
-                    config,
-                )
-                .with(nu_table::tabled::MaxWidth::truncating(term_width));
+                let table = build_table(config, term_width, output, None);
 
                 let result = table.to_string();
 
@@ -331,121 +334,102 @@ fn handle_row_stream(
     })
 }
 
-fn convert_to_table(
+fn convert_data(
     row_offset: usize,
     input: &[Value],
     ctrlc: Option<Arc<AtomicBool>>,
     config: &Config,
     head: Span,
-) -> Result<Option<nu_table::tabled::Table>, ShellError> {
+) -> Result<Option<(Vec<Vec<String>>, Vec<String>)>, ShellError> {
     let mut headers = get_columns(input);
     let mut input = input.iter().peekable();
     let color_hm = get_color_config(config);
     let float_precision = config.float_precision as usize;
     let disable_index = config.disable_table_indexes;
 
-    if input.peek().is_some() {
-        if !headers.is_empty() && !disable_index {
-            headers.insert(0, "#".into());
-        }
-
-        // Vec of Vec of String1, String2 where String1 is datatype and String2 is value
-        let mut data: Vec<Vec<(String, String)>> = Vec::new();
-
-        for (row_num, item) in input.enumerate() {
-            if let Some(ctrlc) = &ctrlc {
-                if ctrlc.load(Ordering::SeqCst) {
-                    return Ok(None);
-                }
-            }
-            if let Value::Error { error } = item {
-                return Err(error.clone());
-            }
-            // String1 = datatype, String2 = value as string
-            let mut row: Vec<(String, String)> = vec![];
-            if !disable_index {
-                row = vec![("string".to_string(), (row_num + row_offset).to_string())];
-            }
-
-            if headers.is_empty() {
-                row.push((
-                    item.get_type().to_string(),
-                    item.into_abbreviated_string(config),
-                ));
-            } else {
-                let skip_num = if !disable_index { 1 } else { 0 };
-                for header in headers.iter().skip(skip_num) {
-                    let result = match item {
-                        Value::Record { .. } => {
-                            item.clone().follow_cell_path(&[PathMember::String {
-                                val: header.into(),
-                                span: head,
-                            }])
-                        }
-                        _ => Ok(item.clone()),
-                    };
-
-                    match result {
-                        Ok(value) => row.push((
-                            (&value.get_type()).to_string(),
-                            value.into_abbreviated_string(config),
-                        )),
-                        Err(_) => row.push(("empty".to_string(), "❎".into())),
-                    }
-                }
-            }
-
-            data.push(row);
-        }
-
-        let data = data
-            .into_iter()
-            .map(|x| {
-                x.into_iter()
-                    .enumerate()
-                    .map(|(col, y)| {
-                        if col == 0 && !disable_index {
-                            color_hm["row_index"].paint(y.1).to_string()
-                        } else if &y.0 == "float" {
-                            // set dynamic precision from config
-                            let precise_number = match convert_with_precision(&y.1, float_precision)
-                            {
-                                Ok(num) => num,
-                                Err(e) => e.to_string(),
-                            };
-
-                            use_primitive_style(precise_number, &y.0, &color_hm)
-                        } else {
-                            use_primitive_style(y.1, &y.0, &color_hm)
-                        }
-                    })
-                    .collect::<Vec<String>>()
-            })
-            .collect::<Vec<_>>();
-
-        let headers = headers
-            .into_iter()
-            .map(|s| color_hm["header"].paint(s).to_string())
-            .collect::<Vec<_>>();
-        let mut table = nu_table::tabled::builder::Builder::from(data)
-            .set_columns(headers)
-            .build()
-            .with(
-                nu_table::tabled::Modify::new(nu_table::tabled::object::Rows::new(1..))
-                    .with(nu_table::tabled::Alignment::left()),
-            );
-
-        if !disable_index {
-            table = table.with(
-                nu_table::tabled::Modify::new(nu_table::tabled::object::Columns::first())
-                    .with(nu_table::tabled::Alignment::right()),
-            );
-        }
-
-        Ok(Some(table))
-    } else {
-        Ok(None)
+    if input.peek().is_none() {
+        return Ok(None);
     }
+
+    if !headers.is_empty() && !disable_index {
+        headers.insert(0, "#".into());
+    }
+
+    // Vec of Vec of String1, String2 where String1 is datatype and String2 is value
+    let mut data: Vec<Vec<(String, String)>> = Vec::new();
+
+    for (row_num, item) in input.enumerate() {
+        if let Some(ctrlc) = &ctrlc {
+            if ctrlc.load(Ordering::SeqCst) {
+                return Ok(None);
+            }
+        }
+        if let Value::Error { error } = item {
+            return Err(error.clone());
+        }
+        // String1 = datatype, String2 = value as string
+        let mut row: Vec<(String, String)> = vec![];
+        if !disable_index {
+            row = vec![("string".to_string(), (row_num + row_offset).to_string())];
+        }
+
+        if headers.is_empty() {
+            row.push((
+                item.get_type().to_string(),
+                item.into_abbreviated_string(config),
+            ));
+        } else {
+            let skip_num = if !disable_index { 1 } else { 0 };
+            for header in headers.iter().skip(skip_num) {
+                let result = match item {
+                    Value::Record { .. } => item.clone().follow_cell_path(&[PathMember::String {
+                        val: header.into(),
+                        span: head,
+                    }]),
+                    _ => Ok(item.clone()),
+                };
+
+                match result {
+                    Ok(value) => row.push((
+                        (&value.get_type()).to_string(),
+                        value.into_abbreviated_string(config),
+                    )),
+                    Err(_) => row.push(("empty".to_string(), "❎".into())),
+                }
+            }
+        }
+
+        data.push(row);
+    }
+
+    let data = data
+        .into_iter()
+        .map(|x| {
+            x.into_iter()
+                .enumerate()
+                .map(|(col, y)| {
+                    if col == 0 && !disable_index {
+                        color_hm["row_index"].paint(y.1).to_string()
+                    } else if &y.0 == "float" {
+                        // set dynamic precision from config
+                        let precise_number = convert_with_precision(&y.1, float_precision)
+                            .unwrap_or_else(|e| e.to_string());
+
+                        use_primitive_style(precise_number, &y.0, &color_hm)
+                    } else {
+                        use_primitive_style(y.1, &y.0, &color_hm)
+                    }
+                })
+                .collect::<Vec<String>>()
+        })
+        .collect::<Vec<_>>();
+
+    let headers = headers
+        .into_iter()
+        .map(|s| color_hm["header"].paint(s).to_string())
+        .collect::<Vec<_>>();
+
+    Ok(Some((data, headers)))
 }
 
 fn use_primitive_style(
@@ -521,10 +505,7 @@ impl Iterator for PagingTableCreator {
             }
         }
 
-        let color_hm = get_color_config(&self.config);
-        let term_width = get_width_param(self.width_param);
-
-        let table = convert_to_table(
+        let table = convert_data(
             self.row_offset,
             &batch,
             self.ctrlc.clone(),
@@ -533,13 +514,13 @@ impl Iterator for PagingTableCreator {
         );
         self.row_offset += idx;
 
-        match table {
-            Ok(Some(table)) => {
-                let t = table.with(nu_table::tabled::MaxWidth::wrapping(term_width));
-                let result = load_theme_from_config(t, &self.config)
-                    .to_string();
+        let term_width = get_width_param(self.width_param);
 
-                Some(Ok(result.as_bytes().to_vec()))
+        match table {
+            Ok(Some((data, headers))) => {
+                let table = build_table(&self.config, term_width, data, Some(headers));
+
+                Some(Ok(table.to_string().as_bytes().to_vec()))
             }
             Err(err) => Some(Err(err)),
             _ => None,
@@ -547,20 +528,104 @@ impl Iterator for PagingTableCreator {
     }
 }
 
-fn load_theme_from_config(
-    table: nu_table::tabled::Table,
+fn build_table(
     config: &Config,
-) -> nu_table::tabled::Table {
-    match config.table_mode.as_str() {
-        "basic" => table.with(nu_table::tabled::Style::ascii()),
-        "compact" => table.with(nu_table::tabled::Style::modern()),
-        "compact_double" => table.with(nu_table::tabled::Style::extended()),
-        "light" => table.with(nu_table::tabled::Style::psql()),
-        "with_love" => table.with(nu_table::tabled::Style::blank().left(' ').top(' ').bottom(' ').top_left_corner('❤').bottom_left_corner('❤')),
-        "rounded" => table.with(nu_table::tabled::Style::rounded()),
-        "reinforced" => table.with(nu_table::tabled::Style::re_structured_text()),
-        "heavy" => table.with(nu_table::tabled::Style::github_markdown()),
-        "none" => table.with(nu_table::tabled::Style::blank()),
-        _ => table.with(nu_table::tabled::Style::rounded()),
+    term_width: usize,
+    data: Vec<Vec<String>>,
+    headers: Option<Vec<String>>,
+) -> tabled::Table {
+    let count_records = data.len();
+    let mut builder = tabled::builder::Builder::from(data);
+
+    if let Some(headers) = headers {
+        builder = add_footer(config, count_records as u64, &headers, builder);
+        builder = builder.set_columns(headers)
+    }
+
+    let mut table = builder.build();
+
+    table = load_theme_from_config(config, table)
+        .with(tabled::MaxWidth::wrapping(term_width).priority::<tabled::width::PriorityMax>())
+        .with(tabled::Modify::new(tabled::object::Rows::new(1..)).with(tabled::Alignment::left()));
+
+    if !config.disable_table_indexes {
+        table = table.with(
+            tabled::Modify::new(tabled::object::Columns::first()).with(tabled::Alignment::right()),
+        );
+    }
+
+    if need_footer(config, count_records as u64) {
+        table = table.with(FooterStyle);
+    }
+
+    table
+}
+
+fn load_theme_from_config(config: &Config, table: tabled::Table) -> tabled::Table {
+    let mut style: tabled::style::StyleSettings = match config.table_mode.as_str() {
+        "basic" => tabled::Style::ascii().into(),
+        "compact" => tabled::Style::modern().into(),
+        "compact_double" => tabled::Style::extended().into(),
+        "light" => tabled::Style::psql().into(),
+        "with_love" => tabled::Style::blank()
+            .left(' ')
+            .top(' ')
+            .bottom(' ')
+            .top_left_corner('❤')
+            .bottom_left_corner('❤')
+            .into(),
+        "rounded" => tabled::Style::rounded().into(),
+        "reinforced" => tabled::Style::re_structured_text().into(),
+        "heavy" => tabled::Style::github_markdown().into(),
+        "none" => tabled::Style::blank().into(),
+        _ => tabled::Style::rounded().into(),
+    };
+
+    let color_hm = get_color_config(config);
+    if let Some(color) = color_hm.get("separator") {
+        style = style.try_map(|s| Symbol::ansi(color.paint(s.to_string()).to_string()).unwrap());
+    }
+
+    table.with(style)
+}
+
+fn add_footer(
+    config: &Config,
+    count_records: u64,
+    headers: &[String],
+    mut b: tabled::builder::Builder,
+) -> tabled::builder::Builder {
+    let insert_footer = need_footer(config, count_records);
+    if insert_footer {
+        b = b.add_record(headers);
+    }
+
+    b
+}
+
+fn need_footer(config: &Config, count_records: u64) -> bool {
+    matches!(config.footer_mode, FooterMode::RowCount(limit) if count_records > limit)
+        || matches!(config.footer_mode, FooterMode::Always)
+}
+
+struct FooterStyle;
+
+impl tabled::TableOption for FooterStyle {
+    fn change(&mut self, grid: &mut tabled::papergrid::Grid) {
+        if grid.count_columns() == 0 || grid.count_rows() == 0 {
+            return;
+        }
+
+        let mut line = tabled::papergrid::Line::default();
+
+        let border = grid.get_border(0, 0);
+        line.left = border.left_bottom_corner;
+        line.intersection = border.right_bottom_corner;
+        line.horizontal = border.bottom;
+
+        let border = grid.get_border(0, grid.count_columns() - 1);
+        line.right = border.right_bottom_corner;
+
+        grid.set_split_line(grid.count_rows() - 1, line);
     }
 }

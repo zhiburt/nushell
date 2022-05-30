@@ -3071,7 +3071,7 @@ checksum = "decf7381921fea4dcb2549c5667eda59b3ec297ab7e2b5fc33eac69d2e7da87b"
 [[package]]
 name = "papergrid"
 version = "0.4.0"
-source = "git+https://github.com/zhiburt/tabled?branch=papergrid-work#77359920beb8fac95cf4323d11e55bb05278a14a"
+source = "git+https://github.com/zhiburt/tabled?rev=515b7dd9161c58f8af77f18ae3345ef2e4d1bf69#515b7dd9161c58f8af77f18ae3345ef2e4d1bf69"
 dependencies = [
  "ansi-str",
  "bytecount",
@@ -4624,7 +4624,7 @@ dependencies = [
 [[package]]
 name = "tabled"
 version = "0.7.0"
-source = "git+https://github.com/zhiburt/tabled?branch=papergrid-work#77359920beb8fac95cf4323d11e55bb05278a14a"
+source = "git+https://github.com/zhiburt/tabled?rev=515b7dd9161c58f8af77f18ae3345ef2e4d1bf69#515b7dd9161c58f8af77f18ae3345ef2e4d1bf69"
 dependencies = [
  "ansi-str",
  "papergrid",
