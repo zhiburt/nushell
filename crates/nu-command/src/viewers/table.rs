@@ -10,6 +10,7 @@ use nu_protocol::{
 use nu_table::{
     tabled::{
         self,
+        object::Object,
         style::{CustomStyle, Symbol},
         Highlight,
     },
@@ -535,6 +536,7 @@ fn build_table(
     headers: Option<Vec<String>>,
 ) -> tabled::Table {
     let count_records = data.len();
+    let header_present = headers.is_some();
     let mut builder = tabled::builder::Builder::from(data);
 
     if let Some(headers) = headers {
@@ -554,11 +556,17 @@ fn build_table(
         );
     }
 
-    if need_footer(config, count_records as u64) {
-        table = table.with(FooterStyle);
+    if header_present {
         table = table.with(
-            tabled::Modify::new(tabled::object::Rows::last()).with(tabled::Alignment::center()),
+            tabled::Modify::new(tabled::object::Rows::first()).with(tabled::Alignment::center()),
         );
+
+        if need_footer(config, count_records as u64) {
+            table = table.with(FooterStyle);
+            table = table.with(
+                tabled::Modify::new(tabled::object::Rows::last()).with(tabled::Alignment::center()),
+            );
+        }
     }
 
     table
