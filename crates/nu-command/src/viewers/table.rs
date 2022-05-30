@@ -16,9 +16,12 @@ use nu_table::{
     },
     StyledString, TableTheme, TextStyle,
 };
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
+use std::{
+    collections::HashMap,
+    sync::atomic::{AtomicBool, Ordering},
+};
 use terminal_size::{Height, Width};
 
 //use super::lscolor_ansiterm::ToNuAnsiStyle;
@@ -160,7 +163,7 @@ impl Command for Table {
                     output.push(vec![c, v.into_abbreviated_string(config)])
                 }
 
-                let table = build_table(config, term_width, output, None);
+                let table = build_table(config, term_width, output, None, None);
 
                 let result = table.to_string();
 
@@ -341,7 +344,7 @@ fn convert_data(
     ctrlc: Option<Arc<AtomicBool>>,
     config: &Config,
     head: Span,
-) -> Result<Option<(Vec<Vec<String>>, Vec<String>)>, ShellError> {
+) -> Result<Option<(Vec<Vec<String>>, Vec<String>, Vec<Vec<nu_table::Alignment>>)>, ShellError> {
     let mut headers = get_columns(input);
     let mut input = input.iter().peekable();
     let color_hm = get_color_config(config);
@@ -403,6 +406,22 @@ fn convert_data(
         data.push(row);
     }
 
+    let alignment_map = data
+        .iter()
+        .map(|x| {
+            x.iter()
+                .enumerate()
+                .map(|(col, y)| {
+                    if col == 0 && !disable_index {
+                        nu_table::Alignment::Right
+                    } else {
+                        get_primitive_alignment(&y.0, &color_hm)
+                    }
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+
     let data = data
         .into_iter()
         .map(|x| {
@@ -421,7 +440,7 @@ fn convert_data(
                         use_primitive_style(y.1, &y.0, &color_hm)
                     }
                 })
-                .collect::<Vec<String>>()
+                .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
 
@@ -430,7 +449,7 @@ fn convert_data(
         .map(|s| color_hm["header"].paint(s).to_string())
         .collect::<Vec<_>>();
 
-    Ok(Some((data, headers)))
+    Ok(Some((data, headers, alignment_map)))
 }
 
 fn use_primitive_style(
@@ -443,6 +462,14 @@ fn use_primitive_style(
         Some(s) => s.paint(text).to_string(),
         None => text,
     }
+}
+
+fn get_primitive_alignment(
+    primitive: &str,
+    color_hm: &std::collections::HashMap<String, nu_ansi_term::Style>,
+) -> nu_table::Alignment {
+    let style = style_primitive(primitive, color_hm);
+    style.alignment
 }
 
 fn convert_with_precision(val: &str, precision: usize) -> Result<String, ShellError> {
@@ -518,8 +545,14 @@ impl Iterator for PagingTableCreator {
         let term_width = get_width_param(self.width_param);
 
         match table {
-            Ok(Some((data, headers))) => {
-                let table = build_table(&self.config, term_width, data, Some(headers));
+            Ok(Some((data, headers, alignment_map))) => {
+                let table = build_table(
+                    &self.config,
+                    term_width,
+                    data,
+                    Some(headers),
+                    Some(alignment_map),
+                );
 
                 Some(Ok(table.to_string().as_bytes().to_vec()))
             }
@@ -534,6 +567,7 @@ fn build_table(
     term_width: usize,
     data: Vec<Vec<String>>,
     headers: Option<Vec<String>>,
+    alignment_map: Option<Vec<Vec<nu_table::Alignment>>>,
 ) -> tabled::Table {
     let count_records = data.len();
     let header_present = headers.is_some();
@@ -569,7 +603,27 @@ fn build_table(
         }
     }
 
+    if let Some(alignment) = alignment_map {
+        let offset = if header_present { 1 } else { 0 };
+        for (row, alignments) in alignment.into_iter().enumerate() {
+            for (col, alignment) in alignments.into_iter().enumerate() {
+                let alignment = nu_table_alignment_to_tabled_alignment(alignment);
+                table = table.with(
+                    tabled::Modify::new(tabled::object::Cell(row + offset, col)).with(alignment),
+                );
+            }
+        }
+    }
+
     table
+}
+
+fn nu_table_alignment_to_tabled_alignment(alignment: nu_table::Alignment) -> tabled::Alignment {
+    match alignment {
+        nu_table::Alignment::Left => tabled::Alignment::left(),
+        nu_table::Alignment::Center => tabled::Alignment::center(),
+        nu_table::Alignment::Right => tabled::Alignment::right(),
+    }
 }
 
 fn load_theme_from_config(config: &Config, table: tabled::Table) -> tabled::Table {
