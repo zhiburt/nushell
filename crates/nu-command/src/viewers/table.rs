@@ -165,7 +165,7 @@ impl Command for Table {
 
                 let table = build_table(config, term_width, output, None, None);
 
-                let result = table.to_string();
+                let result = print_table(table, term_width);
 
                 Ok(Value::String {
                     val: result,
@@ -546,7 +546,7 @@ impl Iterator for PagingTableCreator {
 
         match table {
             Ok(Some((data, headers, alignment_map))) => {
-                let table = build_table(
+                let mut table = build_table(
                     &self.config,
                     term_width,
                     data,
@@ -554,12 +554,22 @@ impl Iterator for PagingTableCreator {
                     Some(alignment_map),
                 );
 
-                Some(Ok(table.to_string().as_bytes().to_vec()))
+                Some(Ok(print_table(table, term_width).as_bytes().to_vec()))
             }
             Err(err) => Some(Err(err)),
             _ => None,
         }
     }
+}
+
+fn print_table(mut table: tabled::Table, term_width: usize) -> String {
+    let mut width = CalculateTableWidth(0);
+    table = table.with(&mut width);
+    if width.0 > term_width {
+        return format!("Couldn't fit table into {} columns!", term_width);
+    }
+
+    table.to_string()
 }
 
 fn build_table(
@@ -692,5 +702,13 @@ impl tabled::TableOption for FooterStyle {
         line.right = border.right_bottom_corner;
 
         grid.set_split_line(grid.count_rows() - 1, line);
+    }
+}
+
+struct CalculateTableWidth(usize);
+
+impl tabled::TableOption for CalculateTableWidth {
+    fn change(&mut self, grid: &mut tabled::papergrid::Grid) {
+        self.0 = grid.total_width();
     }
 }
