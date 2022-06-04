@@ -76,6 +76,7 @@ pub struct Config {
     pub disable_table_indexes: bool,
     pub cd_with_abbreviations: bool,
     pub case_sensitive_completions: bool,
+    pub truncate_table_strings_at: i64,
 }
 
 impl Default for Config {
@@ -107,6 +108,7 @@ impl Default for Config {
             disable_table_indexes: false,
             cd_with_abbreviations: false,
             case_sensitive_completions: false,
+            truncate_table_strings_at: 24,
         }
     }
 }
@@ -321,6 +323,13 @@ impl Value {
                             config.case_sensitive_completions = b;
                         } else {
                             eprintln!("$config.case_sensitive_completions is not a bool")
+                        }
+                    }
+                    "truncate_table_strings_at" => {
+                        if let Ok(i) = value.as_integer() {
+                            config.truncate_table_strings_at = i;
+                        } else {
+                            eprintln!("$config.truncate_table_strings_at is not an integer")
                         }
                     }
                     x => {

@@ -546,7 +546,7 @@ impl Iterator for PagingTableCreator {
 
         match table {
             Ok(Some((data, headers, alignment_map))) => {
-                let mut table = build_table(
+                let table = build_table(
                     &self.config,
                     term_width,
                     data,
@@ -590,8 +590,13 @@ fn build_table(
 
     let mut table = builder.build();
 
-    table = load_theme_from_config(config, table)
-        .with(tabled::MaxWidth::wrapping(term_width).priority::<tabled::width::PriorityMax>())
+    table = table.with(
+        tabled::Modify::new(tabled::object::Segment::all())
+            .with(tabled::Width::truncate(config.truncate_table_strings_at as usize).suffix("..")),
+    );
+
+    table = load_theme_from_config(config, table, header_present)
+        .with(tabled::Width::wrap(term_width).priority::<tabled::width::PriorityMax>())
         .with(tabled::Modify::new(tabled::object::Rows::new(1..)).with(tabled::Alignment::left()));
 
     if !config.disable_table_indexes {
@@ -636,7 +641,11 @@ fn nu_table_alignment_to_tabled_alignment(alignment: nu_table::Alignment) -> tab
     }
 }
 
-fn load_theme_from_config(config: &Config, table: tabled::Table) -> tabled::Table {
+fn load_theme_from_config(
+    config: &Config,
+    mut table: tabled::Table,
+    with_header: bool,
+) -> tabled::Table {
     let mut style: tabled::style::StyleSettings = match config.table_mode.as_str() {
         "basic" => tabled::Style::ascii().into(),
         "compact" => tabled::Style::modern().into(),
@@ -661,7 +670,13 @@ fn load_theme_from_config(config: &Config, table: tabled::Table) -> tabled::Tabl
         style = style.try_map(|s| Symbol::ansi(color.paint(s.to_string()).to_string()).unwrap());
     }
 
-    table.with(style)
+    table = table.with(style);
+
+    if !with_header {
+        table = table.with(RemoveHeaderLine);
+    }
+
+    table
 }
 
 fn add_footer(
@@ -710,5 +725,13 @@ struct CalculateTableWidth(usize);
 impl tabled::TableOption for CalculateTableWidth {
     fn change(&mut self, grid: &mut tabled::papergrid::Grid) {
         self.0 = grid.total_width();
+    }
+}
+
+struct RemoveHeaderLine;
+
+impl tabled::TableOption for RemoveHeaderLine {
+    fn change(&mut self, grid: &mut tabled::papergrid::Grid) {
+        grid.set_split_line(1, tabled::papergrid::Line::default());
     }
 }

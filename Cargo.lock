@@ -390,9 +390,9 @@ dependencies = [
 
 [[package]]
 name = "bytecount"
-version = "0.6.2"
+version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72feb31ffc86498dacdbd0fcebb56138e7177a8cc5cea4516031d15ae85a742e"
+checksum = "2c676a478f63e9fa2dd5368a42f28bba0d6c560b775f38583c8bbaa7fcd67c9c"
 
 [[package]]
 name = "bytemuck"
@@ -3071,11 +3071,12 @@ checksum = "decf7381921fea4dcb2549c5667eda59b3ec297ab7e2b5fc33eac69d2e7da87b"
 [[package]]
 name = "papergrid"
 version = "0.4.0"
-source = "git+https://github.com/zhiburt/tabled?rev=515b7dd9161c58f8af77f18ae3345ef2e4d1bf69#515b7dd9161c58f8af77f18ae3345ef2e4d1bf69"
+source = "git+https://github.com/zhiburt/tabled?branch=master#1999c95eb89ca0f97dbf01056d981821c08edd73"
 dependencies = [
  "ansi-str",
  "bytecount",
  "strip-ansi-escapes",
+ "textwrap",
  "unicode-width",
 ]
 
@@ -4624,7 +4625,7 @@ dependencies = [
 [[package]]
 name = "tabled"
 version = "0.7.0"
-source = "git+https://github.com/zhiburt/tabled?rev=515b7dd9161c58f8af77f18ae3345ef2e4d1bf69#515b7dd9161c58f8af77f18ae3345ef2e4d1bf69"
+source = "git+https://github.com/zhiburt/tabled?branch=master#1999c95eb89ca0f97dbf01056d981821c08edd73"
 dependencies = [
  "ansi-str",
  "papergrid",
@@ -4634,8 +4635,7 @@ dependencies = [
 [[package]]
 name = "tabled_derive"
 version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "278ea3921cee8c5a69e0542998a089f7a14fa43c9c4e4f9951295da89bd0c943"
+source = "git+https://github.com/zhiburt/tabled?branch=master#1999c95eb89ca0f97dbf01056d981821c08edd73"
 dependencies = [
  "proc-macro2",
  "quote",
