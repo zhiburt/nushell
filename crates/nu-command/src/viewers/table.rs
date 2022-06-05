@@ -160,7 +160,10 @@ impl Command for Table {
             PipelineData::Value(Value::Record { cols, vals, .. }, ..) => {
                 let mut output = vec![];
                 for (c, v) in cols.into_iter().zip(vals.into_iter()) {
-                    output.push(vec![c, v.into_abbreviated_string(config)])
+                    output.push(vec![
+                        use_text_style(c, TextStyle::default_field()),
+                        use_text_style(v.into_abbreviated_string(config), TextStyle::default()),
+                    ])
                 }
 
                 let table = build_table(config, term_width, output, None, None);
@@ -458,6 +461,13 @@ fn use_primitive_style(
     color_hm: &std::collections::HashMap<String, nu_ansi_term::Style>,
 ) -> String {
     let style = style_primitive(primitive, color_hm);
+    match style.color_style {
+        Some(s) => s.paint(text).to_string(),
+        None => text,
+    }
+}
+
+fn use_text_style(text: String, style: TextStyle) -> String {
     match style.color_style {
         Some(s) => s.paint(text).to_string(),
         None => text,
