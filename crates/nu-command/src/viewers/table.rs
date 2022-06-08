@@ -556,13 +556,14 @@ impl Iterator for PagingTableCreator {
 
         match table {
             Ok(Some((data, headers, alignment_map))) => {
-                let table = build_table(
-                    &self.config,
-                    term_width,
-                    data,
-                    Some(headers),
-                    Some(alignment_map),
-                );
+                let headers = if headers.is_empty() {
+                    None
+                } else {
+                    Some(headers)
+                };
+
+                let table =
+                    build_table(&self.config, term_width, data, headers, Some(alignment_map));
 
                 Some(Ok(print_table(table, term_width).as_bytes().to_vec()))
             }
@@ -601,8 +602,10 @@ fn build_table(
     let mut table = builder.build();
 
     table = table.with(
-        tabled::Modify::new(tabled::object::Segment::all())
-            .with(tabled::Width::truncate(config.truncate_table_strings_at as usize).suffix("..")),
+        tabled::Modify::new(tabled::object::Segment::all()).with(
+            tabled::Width::truncate(config.truncate_table_strings_at as usize)
+                .suffix(&config.truncate_table_strings_suffix),
+        ),
     );
 
     table = load_theme_from_config(config, table, header_present)
