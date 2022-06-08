@@ -601,12 +601,11 @@ fn build_table(
 
     let mut table = builder.build();
 
-    table = table.with(
-        tabled::Modify::new(tabled::object::Segment::all()).with(
-            tabled::Width::truncate(config.truncate_table_strings_at as usize)
-                .suffix(&config.truncate_table_strings_suffix),
-        ),
-    );
+    if let Some(width) = config.truncate_table_strings_at {
+        table = table.with(tabled::Modify::new(tabled::object::Segment::all()).with(
+            tabled::Width::truncate(width as usize).suffix(&config.truncate_table_strings_suffix),
+        ));
+    }
 
     table = load_theme_from_config(config, table, header_present)
         .with(tabled::Width::wrap(term_width).priority::<tabled::width::PriorityMax>())

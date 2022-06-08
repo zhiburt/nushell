@@ -76,7 +76,7 @@ pub struct Config {
     pub disable_table_indexes: bool,
     pub cd_with_abbreviations: bool,
     pub case_sensitive_completions: bool,
-    pub truncate_table_strings_at: i64,
+    pub truncate_table_strings_at: Option<i64>,
     pub truncate_table_strings_suffix: String,
 }
 
@@ -109,7 +109,7 @@ impl Default for Config {
             disable_table_indexes: false,
             cd_with_abbreviations: false,
             case_sensitive_completions: false,
-            truncate_table_strings_at: 24,
+            truncate_table_strings_at: None,
             truncate_table_strings_suffix: String::from(".."),
         }
     }
@@ -329,7 +329,7 @@ impl Value {
                     }
                     "truncate_table_strings_at" => {
                         if let Ok(i) = value.as_integer() {
-                            config.truncate_table_strings_at = i;
+                            config.truncate_table_strings_at = Some(i);
                         } else {
                             eprintln!("$config.truncate_table_strings_at is not an integer")
                         }
