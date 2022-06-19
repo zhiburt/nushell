@@ -7,21 +7,10 @@ use nu_protocol::{
     format_error, Category, Config, DataSource, Example, FooterMode, IntoPipelineData, ListStream,
     PipelineData, PipelineMetadata, RawStream, ShellError, Signature, Span, SyntaxShape, Value,
 };
-use nu_table::{
-    tabled::{
-        self,
-        object::Object,
-        style::{CustomStyle, Symbol},
-        Highlight,
-    },
-    StyledString, TableTheme, TextStyle,
-};
-use std::sync::Arc;
+use nu_table::{tabled, TextStyle};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
-use std::{
-    collections::HashMap,
-    sync::atomic::{AtomicBool, Ordering},
-};
+use std::{borrow::Cow, sync::Arc};
 use terminal_size::{Height, Width};
 
 //use super::lscolor_ansiterm::ToNuAnsiStyle;
@@ -84,7 +73,6 @@ impl Command for Table {
         let head = call.head;
         let ctrlc = engine_state.ctrlc.clone();
         let config = engine_state.get_config();
-        let color_hm = get_color_config(config);
         let start_num: Option<i64> = call.get_flag(engine_state, stack, "start-number")?;
         let row_offset = start_num.unwrap_or_default() as usize;
         let list: bool = call.has_flag("list");
@@ -341,13 +329,19 @@ fn handle_row_stream(
     })
 }
 
+struct TableData {
+    header: Vec<String>,
+    records: Vec<Vec<String>>,
+    alignment: Vec<Vec<tabled::Alignment>>,
+}
+
 fn convert_data(
     row_offset: usize,
     input: &[Value],
     ctrlc: Option<Arc<AtomicBool>>,
     config: &Config,
     head: Span,
-) -> Result<Option<(Vec<Vec<String>>, Vec<String>, Vec<Vec<nu_table::Alignment>>)>, ShellError> {
+) -> Result<Option<TableData>, ShellError> {
     let mut headers = get_columns(input);
     let mut input = input.iter().peekable();
     let color_hm = get_color_config(config);
@@ -362,8 +356,8 @@ fn convert_data(
         headers.insert(0, "#".into());
     }
 
-    // Vec of Vec of String1, String2 where String1 is datatype and String2 is value
-    let mut data: Vec<Vec<(String, String)>> = Vec::new();
+    let mut alignment_map: Vec<Vec<tabled::Alignment>> = vec![Vec::new(); input.len()];
+    let mut data: Vec<Vec<String>> = vec![Vec::new(); input.len()];
 
     for (row_num, item) in input.enumerate() {
         if let Some(ctrlc) = &ctrlc {
@@ -374,16 +368,29 @@ fn convert_data(
         if let Value::Error { error } = item {
             return Err(error.clone());
         }
-        // String1 = datatype, String2 = value as string
-        let mut row: Vec<(String, String)> = vec![];
+
+        let mut row_alignment: Vec<tabled::Alignment> = vec![];
+        let mut row: Vec<String> = vec![];
         if !disable_index {
-            row = vec![("string".to_string(), (row_num + row_offset).to_string())];
+            let index_value = colorize_value(
+                (row_num + row_offset).to_string(),
+                "string",
+                &color_hm,
+                float_precision,
+                true,
+            );
+
+            row = vec![index_value];
+            row_alignment = vec![tabled::Alignment::right()]
         }
 
         if headers.is_empty() {
-            row.push((
-                item.get_type().to_string(),
+            row.push(colorize_value(
                 item.into_abbreviated_string(config),
+                &item.get_type().to_string(),
+                &color_hm,
+                float_precision,
+                false,
             ));
         } else {
             let skip_num = if !disable_index { 1 } else { 0 };
@@ -396,63 +403,62 @@ fn convert_data(
                     _ => Ok(item.clone()),
                 };
 
-                match result {
-                    Ok(value) => row.push((
-                        (&value.get_type()).to_string(),
+                let (value, v_type) = match result {
+                    Ok(value) => (
                         value.into_abbreviated_string(config),
-                    )),
-                    Err(_) => row.push(("empty".to_string(), "❎".into())),
-                }
+                        Cow::Owned(value.get_type().to_string()),
+                    ),
+                    Err(_) => ("❎".to_owned(), Cow::Borrowed("empty")),
+                };
+
+                row.push(colorize_value(
+                    value,
+                    &v_type,
+                    &color_hm,
+                    float_precision,
+                    false,
+                ));
+
+                let alignment = get_primitive_alignment(&v_type, &color_hm);
+                let alignment = nu_table_alignment_to_tabled_alignment(alignment);
+                row_alignment.push(alignment);
             }
         }
 
-        data.push(row);
+        data[row_num] = row;
+        alignment_map[row_num] = row_alignment;
     }
-
-    let alignment_map = data
-        .iter()
-        .map(|x| {
-            x.iter()
-                .enumerate()
-                .map(|(col, y)| {
-                    if col == 0 && !disable_index {
-                        nu_table::Alignment::Right
-                    } else {
-                        get_primitive_alignment(&y.0, &color_hm)
-                    }
-                })
-                .collect::<Vec<_>>()
-        })
-        .collect::<Vec<_>>();
-
-    let data = data
-        .into_iter()
-        .map(|x| {
-            x.into_iter()
-                .enumerate()
-                .map(|(col, y)| {
-                    if col == 0 && !disable_index {
-                        color_hm["row_index"].paint(y.1).to_string()
-                    } else if &y.0 == "float" {
-                        // set dynamic precision from config
-                        let precise_number = convert_with_precision(&y.1, float_precision)
-                            .unwrap_or_else(|e| e.to_string());
-
-                        use_primitive_style(precise_number, &y.0, &color_hm)
-                    } else {
-                        use_primitive_style(y.1, &y.0, &color_hm)
-                    }
-                })
-                .collect::<Vec<_>>()
-        })
-        .collect::<Vec<_>>();
 
     let headers = headers
         .into_iter()
         .map(|s| color_hm["header"].paint(s).to_string())
         .collect::<Vec<_>>();
 
-    Ok(Some((data, headers, alignment_map)))
+    Ok(Some(TableData {
+        records: data,
+        header: headers,
+        alignment: alignment_map,
+    }))
+}
+
+fn colorize_value(
+    value: String,
+    value_type: &str,
+    color_hm: &std::collections::HashMap<String, nu_ansi_term::Style>,
+    float_precision: usize,
+    is_index: bool,
+) -> String {
+    if is_index {
+        color_hm["row_index"].paint(value).to_string()
+    } else if value_type == "float" {
+        // set dynamic precision from config
+        let precise_number =
+            convert_with_precision(&value, float_precision).unwrap_or_else(|e| e.to_string());
+
+        use_primitive_style(precise_number, value_type, color_hm)
+    } else {
+        use_primitive_style(value, value_type, color_hm)
+    }
 }
 
 fn use_primitive_style(
@@ -555,17 +561,22 @@ impl Iterator for PagingTableCreator {
         let term_width = get_width_param(self.width_param);
 
         match table {
-            Ok(Some((data, headers, alignment_map))) => {
-                let headers = if headers.is_empty() {
+            Ok(Some(data)) => {
+                let headers = if data.header.is_empty() {
                     None
                 } else {
-                    Some(headers)
+                    Some(data.header)
                 };
 
-                let table =
-                    build_table(&self.config, term_width, data, headers, Some(alignment_map));
+                let table = build_table(
+                    &self.config,
+                    term_width,
+                    data.records,
+                    headers,
+                    Some(data.alignment),
+                );
 
-                Some(Ok(print_table(table, term_width).as_bytes().to_vec()))
+                Some(Ok(print_table(table, term_width).into_bytes()))
             }
             Err(err) => Some(Err(err)),
             _ => None,
@@ -573,14 +584,19 @@ impl Iterator for PagingTableCreator {
     }
 }
 
-fn print_table(mut table: tabled::Table, term_width: usize) -> String {
-    let mut width = CalculateTableWidth(0);
-    table = table.with(&mut width);
-    if width.0 > term_width {
+fn print_table(table: tabled::Table, term_width: usize) -> String {
+    let table = table.to_string();
+
+    let width = table
+        .lines()
+        .next()
+        .map(tabled::papergrid::string_width)
+        .unwrap_or(0);
+    if width > term_width {
         return format!("Couldn't fit table into {} columns!", term_width);
     }
 
-    table.to_string()
+    table
 }
 
 fn build_table(
@@ -588,7 +604,7 @@ fn build_table(
     term_width: usize,
     data: Vec<Vec<String>>,
     headers: Option<Vec<String>>,
-    alignment_map: Option<Vec<Vec<nu_table::Alignment>>>,
+    alignment_map: Option<Vec<Vec<tabled::Alignment>>>,
 ) -> tabled::Table {
     let count_records = data.len();
     let header_present = headers.is_some();
@@ -634,7 +650,6 @@ fn build_table(
         let offset = if header_present { 1 } else { 0 };
         for (row, alignments) in alignment.into_iter().enumerate() {
             for (col, alignment) in alignments.into_iter().enumerate() {
-                let alignment = nu_table_alignment_to_tabled_alignment(alignment);
                 table = table.with(
                     tabled::Modify::new(tabled::object::Cell(row + offset, col)).with(alignment),
                 );
@@ -679,7 +694,9 @@ fn load_theme_from_config(
 
     let color_hm = get_color_config(config);
     if let Some(color) = color_hm.get("separator") {
-        style = style.try_map(|s| Symbol::ansi(color.paint(s.to_string()).to_string()).unwrap());
+        style = style.try_map(|s| {
+            tabled::style::Symbol::ansi(color.paint(s.to_string()).to_string()).unwrap()
+        });
     }
 
     table = table.with(style);
