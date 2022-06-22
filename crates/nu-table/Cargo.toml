@@ -19,5 +19,5 @@ unicode-width = "0.1.8"
 strip-ansi-escapes = "0.1.1"
 ansi-str = "0.1.1"
 atty = "0.2.14"
-tabled = { git = "https://github.com/zhiburt/tabled", branch = "try-improve-perf-of-printing", features = ["color"] }
+tabled = { git = "https://github.com/zhiburt/tabled", rev = "7ea89cfc9e1fbf1fe4c453663ee4b1a2cf617e9b", features = ["color"] }
 # tabled = { path = "/home/maxim/projects/tabled/", features = [ "color" ] }

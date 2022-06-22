@@ -96,6 +96,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ansi-str"
+version = "0.1.1"
+source = "git+https://github.com/zhiburt/ansi-str?rev=349d52624183e3238a7fc99508a26b930d1d6e8c#349d52624183e3238a7fc99508a26b930d1d6e8c"
+dependencies = [
+ "ansi-parser",
+]
+
+[[package]]
 name = "ansi_term"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3079,9 +3087,9 @@ checksum = "decf7381921fea4dcb2549c5667eda59b3ec297ab7e2b5fc33eac69d2e7da87b"
 [[package]]
 name = "papergrid"
 version = "0.4.0"
-source = "git+https://github.com/zhiburt/tabled?branch=try-improve-perf-of-printing#d9158572ad13dbcfe1feec98080e5c5d9ad61b7c"
+source = "git+https://github.com/zhiburt/tabled?rev=7ea89cfc9e1fbf1fe4c453663ee4b1a2cf617e9b#7ea89cfc9e1fbf1fe4c453663ee4b1a2cf617e9b"
 dependencies = [
- "ansi-str 0.1.1 (git+https://github.com/zhiburt/ansi-str?branch=master)",
+ "ansi-str 0.1.1 (git+https://github.com/zhiburt/ansi-str?rev=349d52624183e3238a7fc99508a26b930d1d6e8c)",
  "bytecount",
  "strip-ansi-escapes",
  "unicode-width",
@@ -4632,7 +4640,7 @@ dependencies = [
 [[package]]
 name = "tabled"
 version = "0.7.0"
-source = "git+https://github.com/zhiburt/tabled?branch=try-improve-perf-of-printing#d9158572ad13dbcfe1feec98080e5c5d9ad61b7c"
+source = "git+https://github.com/zhiburt/tabled?rev=7ea89cfc9e1fbf1fe4c453663ee4b1a2cf617e9b#7ea89cfc9e1fbf1fe4c453663ee4b1a2cf617e9b"
 dependencies = [
  "ansi-str 0.1.1 (git+https://github.com/zhiburt/ansi-str?branch=master)",
  "papergrid",
@@ -4642,7 +4650,7 @@ dependencies = [
 [[package]]
 name = "tabled_derive"
 version = "0.3.0"
-source = "git+https://github.com/zhiburt/tabled?branch=try-improve-perf-of-printing#d9158572ad13dbcfe1feec98080e5c5d9ad61b7c"
+source = "git+https://github.com/zhiburt/tabled?rev=7ea89cfc9e1fbf1fe4c453663ee4b1a2cf617e9b#7ea89cfc9e1fbf1fe4c453663ee4b1a2cf617e9b"
 dependencies = [
  "proc-macro2",
  "quote",
