@@ -757,3 +757,124 @@ impl ColumnSpace {
         }
     }
 }
+
+pub fn __wrap(headers: &mut Vec<String>, data: &mut Vec<Vec<String>>, termwidth: usize) {
+    let headers_len = headers.len();
+
+    // Measure how big our columns need to be (accounting for separators also)
+    let max_naive_column_width = (termwidth - 3 * (headers_len - 1)) / headers_len;
+
+    let max_per_column = __get_max_column_widths(headers, data);
+
+    let column_space = ColumnSpace::measure(&max_per_column, max_naive_column_width, headers_len);
+
+    // This gives us the max column width
+    let max_column_width = column_space.max_width(termwidth);
+
+    // This width isn't quite right, as we're rounding off some of our space
+    let column_space = column_space.fix_almost_column_width(
+        &max_per_column,
+        max_naive_column_width,
+        max_column_width,
+        headers_len,
+    );
+
+    // This should give us the final max column width
+    let max_column_width = column_space.max_width(termwidth);
+    let re_leading =
+        regex::Regex::new(r"(?P<beginsp>^\s+)").expect("error with leading space regex");
+    let re_trailing =
+        regex::Regex::new(r"(?P<endsp>\s+$)").expect("error with trailing space regex");
+
+    __wrap_cells(headers, data, max_column_width, &re_leading, &re_trailing);
+}
+
+fn __get_max_column_widths(headers: &[String], data: &[Vec<String>]) -> Vec<usize> {
+    use std::cmp::max;
+
+    let mut max_num_columns = 0;
+
+    max_num_columns = max(max_num_columns, headers.len());
+
+    for row in data {
+        max_num_columns = max(max_num_columns, row.len());
+    }
+
+    let mut output = vec![0; max_num_columns];
+
+    for column in headers.iter().enumerate() {
+        output[column.0] = max(output[column.0], column_width(&split_sublines(&column.1)));
+    }
+
+    for row in data {
+        for column in row.iter().enumerate() {
+            output[column.0] = max(output[column.0], column_width(&split_sublines(&column.1)));
+        }
+    }
+
+    output
+}
+
+fn __wrap_cells(
+    headers: &mut Vec<String>,
+    data: &mut Vec<Vec<String>>,
+    max_column_width: usize,
+    re_leading: &regex::Regex,
+    re_trailing: &regex::Regex,
+) {
+    let mut column_widths = vec![
+        0;
+        std::cmp::max(
+            headers.len(),
+            if !data.is_empty() { data[0].len() } else { 0 }
+        )
+    ];
+
+    for header in headers.into_iter().enumerate() {
+        let mut wrapped = Vec::new();
+
+        for contents in split_sublines(header.1) {
+            let (mut lines, inner_max_width) = wrap(
+                max_column_width,
+                contents.into_iter(),
+                &HashMap::new(),
+                re_leading,
+                re_trailing,
+            );
+            wrapped.append(&mut lines);
+        }
+
+        let content = wrapped
+            .into_iter()
+            .map(|l| l.line)
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        *header.1 = content;
+    }
+
+    for row in data {
+        for column in row.into_iter().enumerate() {
+            let mut wrapped = vec![];
+
+            for contents in split_sublines(column.1) {
+                let (mut lines, inner_max_width) = wrap(
+                    max_column_width,
+                    contents.into_iter(),
+                    &HashMap::new(),
+                    re_leading,
+                    re_trailing,
+                );
+                wrapped.append(&mut lines);
+            }
+
+            let content = wrapped
+                .into_iter()
+                .map(|l| l.line)
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            *column.1 = content;
+        }
+    }
+}

@@ -3,7 +3,7 @@ mod table_theme;
 mod textstyle;
 mod wrap;
 
-pub use table::{draw_table, Table};
+pub use table::{draw_table, Table, __wrap};
 pub use table_theme::TableTheme;
 pub use tabled;
 pub use textstyle::{StyledString, TextStyle};

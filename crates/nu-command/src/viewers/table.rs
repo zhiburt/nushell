@@ -572,7 +572,10 @@ impl Iterator for PagingTableCreator {
 
                 let mut default_v: Vec<String> = Vec::new();
                 let headersc = headers.as_mut().unwrap_or(&mut default_v);
+
                 maybe_truncate_columns(term_width, headersc, &mut data);
+
+                nu_table::__wrap(headersc, &mut data, term_width);
 
                 let table = build_table(&self.config, term_width, data, headers, Some(alignments));
 
@@ -592,6 +595,7 @@ fn print_table(table: tabled::Table, term_width: usize) -> String {
         .next()
         .map(tabled::papergrid::string_width)
         .unwrap_or(0);
+    println!("{}", width);
     if width > term_width {
         return format!("Couldn't fit table into {} columns!", term_width);
     }
@@ -624,7 +628,7 @@ fn build_table(
     }
 
     table = load_theme_from_config(config, table, header_present)
-        .with(tabled::Width::wrap(term_width).priority::<tabled::width::PriorityMax>())
+        // .with(tabled::Width::wrap(term_width).priority::<tabled::width::PriorityMax>())
         .with(tabled::Modify::new(tabled::object::Rows::new(1..)).with(tabled::Alignment::left()));
 
     if !config.disable_table_indexes {
