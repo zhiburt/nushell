@@ -573,8 +573,6 @@ impl Iterator for PagingTableCreator {
                 let mut default_v: Vec<String> = Vec::new();
                 let headersc = headers.as_mut().unwrap_or(&mut default_v);
 
-                maybe_truncate_columns(term_width, headersc, &mut data);
-
                 nu_table::__wrap(headersc, &mut data, term_width);
 
                 let table = build_table(&self.config, term_width, data, headers, Some(alignments));
@@ -766,31 +764,5 @@ struct RemoveHeaderLine;
 impl tabled::TableOption for RemoveHeaderLine {
     fn change(&mut self, grid: &mut tabled::papergrid::Grid) {
         grid.set_split_line(1, tabled::papergrid::Line::default());
-    }
-}
-
-// the function from original nu-table
-pub fn maybe_truncate_columns(
-    termwidth: usize,
-    headers: &mut Vec<String>,
-    data: &mut [Vec<String>],
-) {
-    // Make sure we have enough space for the columns we have
-    let max_num_of_columns = termwidth / 10;
-
-    // If we have too many columns, truncate the table
-    if max_num_of_columns < headers.len() {
-        headers.truncate(max_num_of_columns);
-        headers.push("...".to_string());
-    }
-
-    if max_num_of_columns < headers.len() {
-        for entry in data.iter_mut() {
-            entry.truncate(max_num_of_columns);
-        }
-
-        for entry in data.iter_mut() {
-            entry.push("...".to_string());
-        }
     }
 }

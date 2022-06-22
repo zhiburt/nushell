@@ -759,12 +759,21 @@ impl ColumnSpace {
 }
 
 pub fn __wrap(headers: &mut Vec<String>, data: &mut Vec<Vec<String>>, termwidth: usize) {
-    let headers_len = headers.len();
+    let mut headers_len = headers.len();
+    if headers_len == 0 {
+        if !data.is_empty() && !data[0].is_empty() {
+            headers_len = data[0].len();
+        } else {
+            return;
+        }
+    }
 
     // Measure how big our columns need to be (accounting for separators also)
     let max_naive_column_width = (termwidth - 3 * (headers_len - 1)) / headers_len;
 
     let max_per_column = __get_max_column_widths(headers, data);
+
+    __maybe_truncate_columns(termwidth, headers, data);
 
     let column_space = ColumnSpace::measure(&max_per_column, max_naive_column_width, headers_len);
 
@@ -786,6 +795,8 @@ pub fn __wrap(headers: &mut Vec<String>, data: &mut Vec<Vec<String>>, termwidth:
     let re_trailing =
         regex::Regex::new(r"(?P<endsp>\s+$)").expect("error with trailing space regex");
 
+    panic!("{:?} {}", max_per_column, max_column_width);
+
     __wrap_cells(headers, data, max_column_width, &re_leading, &re_trailing);
 }
 
@@ -803,12 +814,14 @@ fn __get_max_column_widths(headers: &[String], data: &[Vec<String>]) -> Vec<usiz
     let mut output = vec![0; max_num_columns];
 
     for column in headers.iter().enumerate() {
-        output[column.0] = max(output[column.0], column_width(&split_sublines(&column.1)));
+        let cleaned = clean(&column.1);
+        output[column.0] = max(output[column.0], column_width(&split_sublines(&cleaned)));
     }
 
     for row in data {
         for column in row.iter().enumerate() {
-            output[column.0] = max(output[column.0], column_width(&split_sublines(&column.1)));
+            let cleaned = clean(&column.1);
+            output[column.0] = max(output[column.0], column_width(&split_sublines(&cleaned)));
         }
     }
 
@@ -822,19 +835,12 @@ fn __wrap_cells(
     re_leading: &regex::Regex,
     re_trailing: &regex::Regex,
 ) {
-    let mut column_widths = vec![
-        0;
-        std::cmp::max(
-            headers.len(),
-            if !data.is_empty() { data[0].len() } else { 0 }
-        )
-    ];
-
     for header in headers.into_iter().enumerate() {
         let mut wrapped = Vec::new();
 
-        for contents in split_sublines(header.1) {
-            let (mut lines, inner_max_width) = wrap(
+        let cleaned = clean(&header.1);
+        for contents in split_sublines(&cleaned) {
+            let (mut lines, _) = wrap(
                 max_column_width,
                 contents.into_iter(),
                 &HashMap::new(),
@@ -857,8 +863,9 @@ fn __wrap_cells(
         for column in row.into_iter().enumerate() {
             let mut wrapped = vec![];
 
-            for contents in split_sublines(column.1) {
-                let (mut lines, inner_max_width) = wrap(
+            let cleaned = clean(&column.1);
+            for contents in split_sublines(&cleaned) {
+                let (mut lines, _) = wrap(
                     max_column_width,
                     contents.into_iter(),
                     &HashMap::new(),
@@ -875,6 +882,31 @@ fn __wrap_cells(
                 .join("\n");
 
             *column.1 = content;
+        }
+    }
+}
+
+pub fn __maybe_truncate_columns(
+    termwidth: usize,
+    headers: &mut Vec<String>,
+    data: &mut [Vec<String>],
+) {
+    // Make sure we have enough space for the columns we have
+    let max_num_of_columns = termwidth / 10;
+
+    // If we have too many columns, truncate the table
+    if max_num_of_columns < headers.len() {
+        headers.truncate(max_num_of_columns);
+        headers.push("...".to_string());
+    }
+
+    if max_num_of_columns < headers.len() {
+        for entry in data.iter_mut() {
+            entry.truncate(max_num_of_columns);
+        }
+
+        for entry in data.iter_mut() {
+            entry.push("...".to_string());
         }
     }
 }
