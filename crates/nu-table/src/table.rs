@@ -759,6 +759,9 @@ impl ColumnSpace {
 }
 
 pub fn __wrap(headers: &mut Vec<String>, data: &mut Vec<Vec<String>>, termwidth: usize) {
+    let edges_width = 3;
+    let termwidth = termwidth - edges_width;
+
     let max_per_column = __get_max_column_widths(headers, data);
 
     __maybe_truncate_columns(termwidth, headers, data);

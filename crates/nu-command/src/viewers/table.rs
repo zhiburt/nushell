@@ -154,6 +154,7 @@ impl Command for Table {
                     ])
                 }
 
+                prepare_data(&mut output, &mut None, term_width);
                 let table = build_table(config, term_width, output, None, None);
 
                 let result = print_table(table, term_width);
@@ -570,10 +571,7 @@ impl Iterator for PagingTableCreator {
                 let alignments = data.alignment;
                 let mut data = data.records;
 
-                let mut default_v: Vec<String> = Vec::new();
-                let headersc = headers.as_mut().unwrap_or(&mut default_v);
-
-                nu_table::__wrap(headersc, &mut data, term_width);
+                prepare_data(&mut data, &mut headers, term_width);
 
                 let table = build_table(&self.config, term_width, data, headers, Some(alignments));
 
@@ -585,6 +583,14 @@ impl Iterator for PagingTableCreator {
     }
 }
 
+fn prepare_data(data: &mut Vec<Vec<String>>, headers: &mut Option<Vec<String>>, term_width: usize) {
+    let mut default_v: Vec<String> = Vec::new();
+    let headersc = headers.as_mut().unwrap_or(&mut default_v);
+
+    nu_table::__wrap(headersc, data, term_width);
+}
+
+
 fn print_table(table: tabled::Table, term_width: usize) -> String {
     let table = table.to_string();
 
@@ -593,7 +599,6 @@ fn print_table(table: tabled::Table, term_width: usize) -> String {
         .next()
         .map(tabled::papergrid::string_width)
         .unwrap_or(0);
-    println!("{}", width);
     if width > term_width {
         return format!("Couldn't fit table into {} columns!", term_width);
     }
