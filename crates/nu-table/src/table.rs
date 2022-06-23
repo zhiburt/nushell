@@ -759,6 +759,10 @@ impl ColumnSpace {
 }
 
 pub fn __wrap(headers: &mut Vec<String>, data: &mut Vec<Vec<String>>, termwidth: usize) {
+    let max_per_column = __get_max_column_widths(headers, data);
+
+    __maybe_truncate_columns(termwidth, headers, data);
+
     let mut headers_len = headers.len();
     if headers_len == 0 {
         if !data.is_empty() && !data[0].is_empty() {
@@ -770,10 +774,6 @@ pub fn __wrap(headers: &mut Vec<String>, data: &mut Vec<Vec<String>>, termwidth:
 
     // Measure how big our columns need to be (accounting for separators also)
     let max_naive_column_width = (termwidth - 3 * (headers_len - 1)) / headers_len;
-
-    let max_per_column = __get_max_column_widths(headers, data);
-
-    __maybe_truncate_columns(termwidth, headers, data);
 
     let column_space = ColumnSpace::measure(&max_per_column, max_naive_column_width, headers_len);
 
@@ -794,8 +794,6 @@ pub fn __wrap(headers: &mut Vec<String>, data: &mut Vec<Vec<String>>, termwidth:
         regex::Regex::new(r"(?P<beginsp>^\s+)").expect("error with leading space regex");
     let re_trailing =
         regex::Regex::new(r"(?P<endsp>\s+$)").expect("error with trailing space regex");
-
-    panic!("{:?} {}", max_per_column, max_column_width);
 
     __wrap_cells(headers, data, max_column_width, &re_leading, &re_trailing);
 }
