@@ -759,10 +759,12 @@ impl ColumnSpace {
 }
 
 pub fn __wrap(headers: &mut Vec<String>, data: &mut Vec<Vec<String>>, termwidth: usize) {
-    let edges_width = 3;
+    let edges_width = 3; // fixme: is it possible to use a different borders layout?
     let termwidth = termwidth - edges_width;
 
-    let max_per_column = __get_max_column_widths(headers, data);
+    let (headers_splited, data_splited) = __split_lines(headers, data);
+
+    let max_per_column = __get_max_column_widths(&headers_splited, &data_splited);
 
     __maybe_truncate_columns(termwidth, headers, data);
 
@@ -798,10 +800,49 @@ pub fn __wrap(headers: &mut Vec<String>, data: &mut Vec<Vec<String>>, termwidth:
     let re_trailing =
         regex::Regex::new(r"(?P<endsp>\s+$)").expect("error with trailing space regex");
 
-    __wrap_cells(headers, data, max_column_width, &re_leading, &re_trailing);
+    __wrap_cells(
+        headers,
+        data,
+        headers_splited,
+        data_splited,
+        max_column_width,
+        &re_leading,
+        &re_trailing,
+    );
 }
 
-fn __get_max_column_widths(headers: &[String], data: &[Vec<String>]) -> Vec<usize> {
+type CellLines = Vec<Vec<Subline>>;
+
+fn __split_lines(
+    headers: &[String],
+    data: &[Vec<String>],
+) -> (Vec<CellLines>, Vec<Vec<CellLines>>) {
+    let mut splited_headers = Vec::with_capacity(headers.len());
+    for column in headers {
+        let column = clean(column);
+        let lines = split_sublines(&column);
+        splited_headers.push(lines);
+    }
+
+    let mut splited_data = Vec::with_capacity(data.len());
+    for row in data {
+        let mut splited_row = Vec::with_capacity(row.len());
+        for column in row {
+            let column = clean(column);
+            let lines = split_sublines(&column);
+            splited_row.push(lines);
+        }
+
+        splited_data.push(splited_row);
+    }
+
+    (splited_headers, splited_data)
+}
+
+fn __get_max_column_widths(
+    headers: &[Vec<Vec<Subline>>],
+    data: &[Vec<Vec<Vec<Subline>>>],
+) -> Vec<usize> {
     use std::cmp::max;
 
     let mut max_num_columns = 0;
@@ -814,15 +855,13 @@ fn __get_max_column_widths(headers: &[String], data: &[Vec<String>]) -> Vec<usiz
 
     let mut output = vec![0; max_num_columns];
 
-    for column in headers.iter().enumerate() {
-        let cleaned = clean(&column.1);
-        output[column.0] = max(output[column.0], column_width(&split_sublines(&cleaned)));
+    for (col, lines) in headers.iter().enumerate() {
+        output[col] = max(output[col], column_width(lines));
     }
 
     for row in data {
-        for column in row.iter().enumerate() {
-            let cleaned = clean(&column.1);
-            output[column.0] = max(output[column.0], column_width(&split_sublines(&cleaned)));
+        for (col, lines) in row.iter().enumerate() {
+            output[col] = max(output[col], column_width(lines));
         }
     }
 
@@ -830,17 +869,17 @@ fn __get_max_column_widths(headers: &[String], data: &[Vec<String>]) -> Vec<usiz
 }
 
 fn __wrap_cells(
-    headers: &mut Vec<String>,
-    data: &mut Vec<Vec<String>>,
+    headers: &mut [String],
+    data: &mut [Vec<String>],
+    headers_splited: Vec<CellLines>,
+    data_splited: Vec<Vec<CellLines>>,
     max_column_width: usize,
     re_leading: &regex::Regex,
     re_trailing: &regex::Regex,
 ) {
-    for header in headers.into_iter().enumerate() {
-        let mut wrapped = Vec::new();
-
-        let cleaned = clean(&header.1);
-        for contents in split_sublines(&cleaned) {
+    for (header, splited) in headers.iter_mut().zip(headers_splited) {
+        let mut wrapped = vec![];
+        for contents in splited {
             let (mut lines, _) = wrap(
                 max_column_width,
                 contents.into_iter(),
@@ -857,15 +896,13 @@ fn __wrap_cells(
             .collect::<Vec<_>>()
             .join("\n");
 
-        *header.1 = content;
+        *header = content;
     }
 
-    for row in data {
-        for column in row.into_iter().enumerate() {
+    for (row, splited) in data.iter_mut().zip(data_splited) {
+        for (column, splited) in row.iter_mut().zip(splited) {
             let mut wrapped = vec![];
-
-            let cleaned = clean(&column.1);
-            for contents in split_sublines(&cleaned) {
+            for contents in splited {
                 let (mut lines, _) = wrap(
                     max_column_width,
                     contents.into_iter(),
@@ -882,7 +919,7 @@ fn __wrap_cells(
                 .collect::<Vec<_>>()
                 .join("\n");
 
-            *column.1 = content;
+            *column = content;
         }
     }
 }
