@@ -590,7 +590,6 @@ fn prepare_data(data: &mut Vec<Vec<String>>, headers: &mut Option<Vec<String>>, 
     nu_table::__wrap(headersc, data, term_width);
 }
 
-
 fn print_table(table: tabled::Table, term_width: usize) -> String {
     let table = table.to_string();
 
@@ -632,7 +631,11 @@ fn build_table(
 
     table = load_theme_from_config(config, table, header_present)
         // .with(tabled::Width::wrap(term_width).priority::<tabled::width::PriorityMax>())
-        .with(tabled::Modify::new(tabled::object::Rows::new(1..)).with(tabled::Alignment::left()));
+        .with(
+            tabled::Modify::new(tabled::object::Rows::new(1..))
+                .with(tabled::Alignment::left())
+                .with(tabled::formatting_settings::AlignmentStrategy::PerLine),
+        );
 
     if !config.disable_table_indexes {
         table = table.with(
@@ -648,7 +651,10 @@ fn build_table(
         if need_footer(config, count_records as u64) {
             table = table.with(FooterStyle);
             table = table.with(
-                tabled::Modify::new(tabled::object::Rows::last()).with(tabled::Alignment::center()),
+                tabled::Modify::new(tabled::object::Rows::last())
+                    .with(tabled::Alignment::center())
+                    .with(tabled::Alignment::left())
+                    .with(tabled::formatting_settings::AlignmentStrategy::PerCell),
             );
         }
     }
