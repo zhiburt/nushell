@@ -355,7 +355,7 @@ impl tabled::TableOption for &TrimStrategyModifier<'_> {
                 let mut w =
                     Width::truncate(self.termwidth).priority::<tabled::width::PriorityMax>();
                 if let Some(suffix) = suffix {
-                    w = w.suffix(suffix);
+                    w = w.suffix(suffix).suffix_try_color(true);
                 }
 
                 w.change(grid);
