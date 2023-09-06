@@ -258,7 +258,7 @@ fn render_ui(
         // handle CTRLC event
         if let Some(ctrlc) = ctrlc.clone() {
             if ctrlc.load(Ordering::SeqCst) {
-                break Ok(None);
+                return Ok(None);
             }
         }
 
@@ -293,7 +293,7 @@ fn render_ui(
             );
 
             if let Some(value) = exit {
-                break Ok(value);
+                return Ok(value);
             }
 
             if !cmd_name.is_empty() {
@@ -320,11 +320,14 @@ fn render_ui(
                 pager_run_command(engine_state, stack, pager, &mut view_stack, &commands, args);
             match out {
                 Ok(result) => {
+                    let view_change = result.view_change && !result.cmd_name.is_empty();
                     if result.exit {
-                        break Ok(peak_value_from_view(&mut view_stack.view, pager));
-                    }
-
-                    if result.view_change && !result.cmd_name.is_empty() {
+                        if let Some(v) = view_stack.stack.pop() {
+                            view_stack.view = Some(v);
+                        } else {
+                            return Ok(peak_value_from_view(&mut view_stack.view, pager));
+                        }
+                    } else if view_change {
                         if let Some(r) = info.report.as_mut() {
                             r.message = result.cmd_name;
                             r.level = Severity::Success;
