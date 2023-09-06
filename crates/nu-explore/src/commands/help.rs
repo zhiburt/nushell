@@ -26,15 +26,35 @@ pub struct HelpCmd {
 impl HelpCmd {
     pub const NAME: &'static str = "help";
 
-    const HELP_MESSAGE: &'static str = r#"                        Explore - main help file
+    const HELP_MESSAGE: &'static str = r#"                        explore - help
 
               Move around:  Use the cursor keys.
                Close help:  Press "<Esc>".
-             Exit Explore:  Type ":q" then then <Enter> (or press Ctrl+D).
- Open an interactive REPL:  Type ":try" then enter
-    List all sub-commands:  Type ":help :" then <Enter>
+             Exit explore:  Type ":q<Enter>".
+ Open an interactive REPL:  Type ":try<Enter>".
+    List all sub-commands:  Type ":help<Enter>".
 
 ------------------------------------------------------------------------------------
+
+# Overview
+
+"explore" is a data viewer, you can navigate, search, peek data with it.
+
+# Mode
+
+There 2 mods:
+    1. Navigation(View)
+    2. Peekage(Edit)
+
+## Navigation(View)
+
+Is used to faster navigate over the data source.
+Primarily cause you move per lines.
+
+## Peekage(Edit)
+
+Is used for a more presize targeteting.
+Primarily cause you move per data entries.
 
 # Regular expressions
 
