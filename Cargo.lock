@@ -2283,6 +2283,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "maparr"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ebcbea62ade19c38835c5b066b645856c2c08bf693a9a0bfd998de3a4ab3a3f"
+dependencies = [
+ "paste",
+]
+
+[[package]]
 name = "markup5ever"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2844,6 +2853,7 @@ dependencies = [
  "ansi-str",
  "crossterm",
  "lscolors",
+ "maparr",
  "nu-ansi-term",
  "nu-color-config",
  "nu-engine",

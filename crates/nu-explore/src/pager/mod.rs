@@ -21,6 +21,7 @@ use crossterm::{
     },
 };
 use lscolors::LsColors;
+use maparr::maparr;
 use nu_color_config::{lookup_ansi_color_style, StyleComputer};
 use nu_protocol::{
     engine::{EngineState, Stack},

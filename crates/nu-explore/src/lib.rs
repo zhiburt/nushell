@@ -6,6 +6,12 @@ mod pager;
 mod registry;
 mod views;
 
+pub(crate) mod keybindings;
+
+mod util {
+    pub use super::nu_common::{create_lscolors, create_map, map_into_value};
+}
+
 pub use default_context::add_explore_context;
 pub use explore::Explore;
 
@@ -26,10 +32,6 @@ use terminal_size::{Height, Width};
 use views::{InformationView, Orientation, Preview, RecordView};
 
 use pager::{PagerConfig, StyleConfig};
-
-mod util {
-    pub use super::nu_common::{create_lscolors, create_map, map_into_value};
-}
 
 fn run_pager(
     engine_state: &EngineState,
