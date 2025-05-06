@@ -103,12 +103,13 @@ impl CellOutput {
 type CellResult = Result<Option<CellOutput>, ShellError>;
 
 fn expand_list(input: &[Value], cfg: Cfg<'_>) -> TableResult {
-    const PADDING_SPACE: usize = 2;
     const SPLIT_LINE_SPACE: usize = 1;
-    const ADDITIONAL_CELL_SPACE: usize = PADDING_SPACE + SPLIT_LINE_SPACE;
     const MIN_CELL_CONTENT_WIDTH: usize = 1;
     const TRUNCATE_CONTENT_WIDTH: usize = 3;
-    const TRUNCATE_CELL_WIDTH: usize = TRUNCATE_CONTENT_WIDTH + PADDING_SPACE;
+
+    let pad_width = cfg.opts.config.table.padding.left + cfg.opts.config.table.padding.right;
+    let extra_width = pad_width + SPLIT_LINE_SPACE;
+    let truncate_column_width = TRUNCATE_CONTENT_WIDTH + pad_width;
 
     if input.is_empty() {
         return Ok(None);
@@ -165,16 +166,16 @@ fn expand_list(input: &[Value], cfg: Cfg<'_>) -> TableResult {
 
         let column_width = string_width(data[data.len() - 1][0].as_ref());
 
-        if column_width + ADDITIONAL_CELL_SPACE > available_width {
+        if column_width + extra_width > available_width {
             available_width = 0;
         } else {
-            available_width -= column_width + ADDITIONAL_CELL_SPACE;
+            available_width -= column_width + extra_width;
         }
     }
 
     if !with_header {
-        if available_width > ADDITIONAL_CELL_SPACE {
-            available_width -= PADDING_SPACE;
+        if available_width > extra_width {
+            available_width -= pad_width;
         } else {
             // it means we have no space left for actual content;
             // which means there's no point in index itself if it was even used.
@@ -215,7 +216,7 @@ fn expand_list(input: &[Value], cfg: Cfg<'_>) -> TableResult {
     }
 
     if !headers.is_empty() {
-        let mut pad_space = PADDING_SPACE;
+        let mut pad_space = pad_width;
         if headers.len() > 1 {
             pad_space += SPLIT_LINE_SPACE;
         }
@@ -234,7 +235,7 @@ fn expand_list(input: &[Value], cfg: Cfg<'_>) -> TableResult {
     let mut rendered_column = 0;
     for (col, header) in headers.into_iter().enumerate() {
         let is_last_column = col + 1 == count_columns;
-        let mut pad_space = PADDING_SPACE;
+        let mut pad_space = pad_width;
         if !is_last_column {
             pad_space += SPLIT_LINE_SPACE;
         }
@@ -247,7 +248,7 @@ fn expand_list(input: &[Value], cfg: Cfg<'_>) -> TableResult {
             // so we might need to decrease a bit it.
 
             // we consider a header width be a minimum width
-            let pad_space = PADDING_SPACE + TRUNCATE_CONTENT_WIDTH;
+            let pad_space = pad_width + TRUNCATE_CONTENT_WIDTH;
 
             if available > pad_space {
                 // In we have no space for a next column,
@@ -336,7 +337,7 @@ fn expand_list(input: &[Value], cfg: Cfg<'_>) -> TableResult {
     }
 
     if truncate {
-        if available_width < TRUNCATE_CELL_WIDTH {
+        if available_width < truncate_column_width {
             // back up by removing last column.
             // it's LIKELY that removing only 1 column will leave us enough space for a shift column.
 
@@ -345,12 +346,12 @@ fn expand_list(input: &[Value], cfg: Cfg<'_>) -> TableResult {
                     row.pop();
                 }
 
-                available_width += width + PADDING_SPACE;
+                available_width += width + pad_width;
                 if !widths.is_empty() {
                     available_width += SPLIT_LINE_SPACE;
                 }
 
-                if available_width > TRUNCATE_CELL_WIDTH {
+                if available_width > truncate_column_width {
                     break;
                 }
             }
@@ -358,7 +359,7 @@ fn expand_list(input: &[Value], cfg: Cfg<'_>) -> TableResult {
 
         // this must be a RARE case or even NEVER happen,
         // but we do check it just in case.
-        if available_width < TRUNCATE_CELL_WIDTH {
+        if available_width < truncate_column_width {
             return Ok(None);
         }
 
@@ -393,7 +394,7 @@ fn expanded_table_kv(record: &Record, cfg: Cfg<'_>) -> CellResult {
     let count_borders = theme.borders_has_vertical() as usize
         + theme.borders_has_right() as usize
         + theme.borders_has_left() as usize;
-    let padding = 2;
+    let padding = cfg.opts.config.table.padding.left + cfg.opts.config.table.padding.right;
     if key_width + count_borders + padding + padding > cfg.opts.width {
         return Ok(None);
     }
